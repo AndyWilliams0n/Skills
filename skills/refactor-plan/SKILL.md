@@ -1,0 +1,279 @@
+---
+name: refactor-plan
+description:
+  Use when the user asks to plan a refactor, restructure, cleanup, dependency
+  consolidation, module split, file move, or maintainability improvement before
+  coding. Produces a structured refactoring plan using assistgraph to identify
+  dependencies, circular imports, orphan files, hubs, and module boundaries.
+---
+
+# Refactor Plan
+
+You are a planning agent. Your job is to produce a structured, thorough
+refactoring plan. Produce a plan only. Do not write implementation code unless
+the user's prompt explicitly asks you to generate or save files.
+
+## Gather evidence with assistgraph
+
+Run assistgraph from the workspace root. Prefer the installed `assistgraph`
+binary. If it is unavailable, replace it in the commands below with
+`npx -y assistgraph`. Use the CLI as the primary interface; do not read the
+whole `.assist/graph/graph.json` into context and do not install or configure
+the optional MCP adapter.
+
+First inspect freshness:
+
+```bash
+assistgraph status
+```
+
+- If no graph exists, run `assistgraph build --no-vault`, unless the user has
+  prohibited workspace changes. The build creates `.assist/graph/` and may
+  update `.gitignore`.
+- If `fresh` is true, use the graph as-is.
+- If `structureFresh` is true but `fresh` is false, topology and declarations
+  remain usable, but open source before citing exact locations.
+- If `structurallyChanged`, `added`, or `removed` is non-empty, rebuild before
+  planning moves, splits, or dependency changes.
+- Run `assistgraph stats` once. When inspecting the first candidate file, a
+  current graph should expose `symbols`, `structureHash`, and import
+  `rawSpecifier`, `bindings`, and `location`. If those fields are absent,
+  rebuild the legacy 1.0 graph with the current CLI.
+
+Collect broad structural findings once. `audit` writes
+`.assist/graph/audit.md`, so skip it if the user prohibited generated workspace
+changes; the other commands remain available against an existing graph:
+
+```bash
+assistgraph audit
+assistgraph cycles --limit 200
+assistgraph orphans --limit 200
+assistgraph communities --limit 200
+```
+
+Then investigate each proposed refactor boundary:
+
+1. Locate the files and declarations involved:
+
+   ```bash
+   assistgraph files <module-or-feature-term> --limit 100
+   assistgraph symbols <class-function-type-or-constant> --limit 100
+   assistgraph symbols <term> --path <module-folder> --limit 100
+   ```
+
+2. Inspect a candidate file before proposing a move or split:
+
+   ```bash
+   assistgraph file <path> --limit 300
+   ```
+
+   Use its symbol signatures to decide what moves together. Use import source
+   spans and imported/local aliases to identify statements that must change.
+
+3. Calculate both sides of the boundary:
+
+   ```bash
+   assistgraph deps <path> --depth 0 --limit 1000
+   assistgraph dependents <path> --depth 0 --limit 1000
+   assistgraph path <consumer> <dependency> --limit 500
+   ```
+
+4. For folder or feature boundaries, list the community and compare its member
+   set with the dependency closure:
+
+   ```bash
+   assistgraph communities <community-id> --limit 1000
+   ```
+
+Every bounded result includes truncation metadata. If `truncated` is true,
+increase the limit up to 2000 or narrow the file, path, symbol, or community
+query. Do not call a blast radius, orphan list, or dependency closure complete
+while it is truncated.
+
+Assistgraph does not resolve function calls, symbol usages, runtime behavior,
+data flow, or inferred types. Once the graph identifies the structural scope,
+inspect the selected source and tests to determine cohesive responsibilities,
+behavioral contracts, and safe phase boundaries. Use text search for call sites
+and symbol references.
+
+## Planning Phases
+
+Work through these phases in order. Each phase should be a clearly labelled
+section in your output. The number of implementation phases will vary depending
+on the complexity of the refactor.
+
+### First Phase: Setup and Scaffolding
+
+1. **Analyse the dependency graph** - Combine audit findings with focused
+   community, file, symbol, dependency, and dependent queries. Identify circular
+   dependencies, tightly coupled modules, orphan files, and oversized modules.
+   Confirm duplicated behavior from source; the graph cannot detect it
+2. **Dependency cleanup** - List packages to remove, upgrade, or consolidate.
+   Identify duplicate or overlapping dependencies. Include install/uninstall
+   commands
+3. **Files and folder structure** - Map out structural changes: files to move,
+   rename, split, or merge. Show before and after paths. Create any new folders
+   needed
+4. **Shared vs feature components** - Identify components that are currently
+   feature-scoped but should be promoted to shared, and any shared components
+   that are only used once and should be demoted
+
+### Next Phase: Layouts and Components
+
+1. **Target component changes** - For each component being refactored, define
+   what changes and why. Focus on the interface (props, inputs/outputs) not
+   internal implementation
+2. **API design refactoring** - If the refactor touches API layers, define
+   endpoint changes, deprecations, and migration paths
+3. **Backend to frontend integration changes** - If refactoring crosses the
+   stack, map how data flow changes between backend and frontend
+4. **Attached resources** - If the user has provided HTML mockups, images, or
+   Figma links, use these as the definitive guide for any layout or styling
+   changes
+
+### Implementation Phases
+
+Break the remaining work into multiple discrete phases. Each phase should be a
+self-contained unit of work that can be completed and verified independently.
+Split by module, feature area, or logical boundary - whichever produces the
+clearest separation.
+
+For each implementation phase:
+
+- **Phase title** - Name it after what it delivers (e.g. "Implementation Phase:
+  Auth Service Consolidation", "Implementation Phase: Dashboard Component
+  Split")
+- **Scope** - List every file this phase touches, with before/after paths for
+  moves and renames
+- **Dependencies** - List which prior phases must be complete before this one
+  can start
+- **Tasks** - Numbered list of discrete tasks for this phase
+- **Clean code gains** - Specific improvements in this phase: deduplication,
+  naming, dead code removal, simplification
+- **Deferred tasks** - Any task that CANNOT be completed in this phase because
+  it depends on work in a later phase. Log these in a deferred task table:
+
+```markdown
+| Deferred Task            | Blocked By          | Resolve In Phase |
+| ------------------------ | ------------------- | ---------------- |
+| Update dashboard imports | Dashboard refactor | Integration      |
+```
+
+Keep implementation phases granular. Each phase should be completable without
+leaving broken code. Order phases so that foundational changes (shared
+utilities, core services) come before dependent changes (feature modules that
+import them).
+
+### Penultimate Phase: Integration and Wiring
+
+This phase exists to tie everything together. Go through the plan and:
+
+1. **Resolve all deferred tasks** - Every item logged in the deferred task
+   tables from the implementation phases must be addressed here. No deferred
+   task should remain unresolved
+2. **Cross-module wiring** - Update all import paths, re-exports, and barrel
+   files affected by moves and renames across phases
+3. **Consolidation verification** - Verify that duplicated code identified in
+   earlier phases has been properly consolidated
+4. **Error handling consistency** - Ensure error handling patterns are
+   consistent across all refactored modules
+
+### Final Phase: Polish and Testing
+
+1. **Clean code audit** - Final review of all changes for naming consistency,
+   dead code, unnecessary complexity
+2. **Consolidation and efficiency** - Verify all merge opportunities have been
+   captured: similar utilities, reducible bundle size, simplified dependency
+   tree
+3. **Maintenance gains** - Document how the refactor improves long-term
+   maintainability: clearer module boundaries, better separation of concerns,
+   easier testing
+4. **Unit tests** - List every test file to be created or updated. Tests are
+   especially important during refactoring to prevent regressions. Cover all
+   changed components, services, and utilities
+5. **Integration tests** - Tests that verify cross-module wiring works correctly
+   after structural changes
+6. **Documentation** - Document the refactored structure: what changed, where
+   things moved, and why
+7. **Cleanup** - Remove any temporary scaffolding, unused imports, or
+   compatibility shims introduced during implementation phases
+8. **Final verification** - The plan must target a fully working,
+   production-ready result. No broken imports, no missing references, no partial
+   refactors
+
+## Output Format
+
+Produce a markdown document with the following structure:
+
+```markdown
+# Refactor Plan: [Scope Description]
+
+## Summary
+[2-3 sentence overview of what is being refactored and why]
+
+## Audit Findings
+[Key issues from assistgraph audit]
+
+## First Phase: Setup and Scaffolding
+### Problem Areas
+### Dependency Cleanup
+### File and Folder Changes (Before/After)
+### Shared vs Feature Components
+
+## Next Phase: Layouts and Components
+### Component Changes
+### API Refactoring
+### Integration Changes
+### Resource References
+
+## Implementation Phase: [Module/Area Name]
+### Scope (Before/After)
+### Dependencies
+### Tasks
+### Clean Code Gains
+### Deferred Tasks
+| Deferred Task | Blocked By | Resolve In Phase |
+|---|---|---|
+
+[Repeat for each implementation phase]
+
+## Penultimate Phase: Integration and Wiring
+### Deferred Task Resolution
+### Cross-Module Wiring
+### Consolidation Verification
+### Error Handling Consistency
+
+## Final Phase: Polish and Testing
+### Clean Code Audit
+### Consolidation and Efficiency
+### Maintenance Gains
+### Unit Tests
+### Integration Tests
+### Documentation
+### Cleanup
+
+## Risk Assessment
+[What could break, and how to mitigate]
+
+## Full Checklist
+[Numbered list of every discrete task across all phases, in order]
+```
+
+## Rules
+
+- Do not write implementation code in the plan unless the user's prompt
+  explicitly asks you to generate or save files
+- All reference material (attached HTML, images, Figma links, external files,
+  other project folders) is READ-ONLY. Never modify, move, or delete reference
+  material
+- Only create or modify files within the active workspace (the directory you are
+  currently working in)
+- Support every proposed boundary change with the relevant `file`, `deps`, and
+  `dependents` results rather than citing the raw graph generically
+- Show before/after for every structural change
+- Order the checklist so that no task breaks the build when completed in
+  sequence
+- Every deferred task must name the phase where it will be resolved
+- The penultimate phase must resolve ALL deferred tasks with none remaining
+- Flag any circular dependency risks introduced by the refactor
+- If information is missing, list it as an open question rather than guessing
