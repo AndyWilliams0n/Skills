@@ -13,88 +13,60 @@ You are a planning agent. Your job is to produce a structured, thorough
 refactoring plan. Produce a plan only. Do not write implementation code unless
 the user's prompt explicitly asks you to generate or save files.
 
-## Gather evidence with assistgraph
+## Delegate evidence collection
 
-Run assistgraph from the workspace root. Prefer the installed `assistgraph`
-binary. If it is unavailable, replace it in the commands below with
-`npx -y assistgraph`. Use the CLI as the primary interface; do not read the
-whole `.assist/graph/graph.json` into context and do not install or configure
-the optional MCP adapter.
+Apply `planning-subagents` when it is available. Use it to delegate bounded,
+read-only graph and source investigation when the scope justifies a handoff.
+The primary model retains boundary decisions, architectural tradeoffs, phase
+ordering, and the final plan. Continue directly if the companion skill or a
+suitable worker model is unavailable.
 
-First inspect freshness:
+## Follow project rules
 
-```bash
-assistgraph status
-```
+Before gathering evidence or delegating work, search every project or workspace
+in scope for Markdown files whose filename contains `AGENTS` or `RULES`, using a
+case-insensitive match. This includes names such as `AGENTS.md`, `RULES.md`, and
+`RULES_FOR_AGENTS.md`. Exclude dependency, version-control, build, and generated
+directories unless one is part of the requested scope.
 
-- If no graph exists, run `assistgraph build --no-vault`, unless the user has
-  prohibited workspace changes. The build creates `.assist/graph/` and may
-  update `.gitignore`.
-- If `fresh` is true, use the graph as-is.
-- If `structureFresh` is true but `fresh` is false, topology and declarations
-  remain usable, but open source before citing exact locations.
-- If `structurallyChanged`, `added`, or `removed` is non-empty, rebuild before
-  planning moves, splits, or dependency changes.
-- Run `assistgraph stats` once. When inspecting the first candidate file, a
-  current graph should expose `symbols`, `structureHash`, and import
-  `rawSpecifier`, `bindings`, and `location`. If those fields are absent,
-  rebuild the legacy 1.0 graph with the current CLI.
+Read every matching file that applies to the paths being investigated and
+follow its instructions. Treat a rule file as applying to its directory and
+descendants unless it defines a different scope. When project rule files
+conflict, prefer the closest applicable file unless a higher-priority
+instruction requires otherwise. Report a material unresolved conflict instead
+of inventing a rule.
 
-Collect broad structural findings once. `audit` writes
-`.assist/graph/audit.md`, so skip it if the user prohibited generated workspace
-changes; the other commands remain available against an existing graph:
+Do not create, modify, rename, or delete project rule files unless the user
+explicitly asks. Do not invent new project rules or propose a new `AGENTS.md`,
+`RULES.md`, or other matching Markdown file as part of an ordinary plan.
 
-```bash
-assistgraph audit
-assistgraph cycles --limit 200
-assistgraph orphans --limit 200
-assistgraph communities --limit 200
-```
+## Gather structural evidence with assistgraph
 
-Then investigate each proposed refactor boundary:
+If the `assist-graph` skill is available, apply it and read its `SKILL.md`
+before running an AssistGraph command. Treat it as the canonical source for CLI
+usage, graph freshness, workspace-write safety, bounded output, and structural
+verification.
 
-1. Locate the files and declarations involved:
+If the skill is unavailable, use this fallback:
 
-   ```bash
-   assistgraph files <module-or-feature-term> --limit 100
-   assistgraph symbols <class-function-type-or-constant> --limit 100
-   assistgraph symbols <term> --path <module-folder> --limit 100
-   ```
+- Run the installed `assistgraph` binary from the workspace root, or use
+  `npx -y assistgraph` when the binary is unavailable.
+- Run `assistgraph status` first. When the graph is missing or structurally
+  stale, run `assistgraph build --no-vault` only when workspace writes are
+  permitted, then check status again.
+- Use bounded CLI queries. Never read or print `.assist/graph/graph.json`, and
+  do not install or configure the optional MCP adapter.
+- Check `truncated` on every bounded result. Narrow the query or increase its
+  limit before describing the result as complete.
+- Use the graph for files, declarations, imports, dependencies, and dependents.
+  Inspect source and tests for behavior, responsibilities, and safe boundaries.
 
-2. Inspect a candidate file before proposing a move or split:
-
-   ```bash
-   assistgraph file <path> --limit 300
-   ```
-
-   Use its symbol signatures to decide what moves together. Use import source
-   spans and imported/local aliases to identify statements that must change.
-
-3. Calculate both sides of the boundary:
-
-   ```bash
-   assistgraph deps <path> --depth 0 --limit 1000
-   assistgraph dependents <path> --depth 0 --limit 1000
-   assistgraph path <consumer> <dependency> --limit 500
-   ```
-
-4. For folder or feature boundaries, list the community and compare its member
-   set with the dependency closure:
-
-   ```bash
-   assistgraph communities <community-id> --limit 1000
-   ```
-
-Every bounded result includes truncation metadata. If `truncated` is true,
-increase the limit up to 2000 or narrow the file, path, symbol, or community
-query. Do not call a blast radius, orphan list, or dependency closure complete
-while it is truncated.
-
-Assistgraph does not resolve function calls, symbol usages, runtime behavior,
-data flow, or inferred types. Once the graph identifies the structural scope,
-inspect the selected source and tests to determine cohesive responsibilities,
-behavioral contracts, and safe phase boundaries. Use text search for call sites
-and symbol references.
+Collect relevant cycle, orphan, and community findings. Run the write-producing
+audit only when generated analysis output is permitted. For each proposed
+boundary, locate its files and declarations, inspect representative file
+metadata, map dependencies and dependents, and use path queries where a
+connection needs proof. Compare community membership with dependency closure
+before proposing moves, splits, or extractions.
 
 ## Planning Phases
 

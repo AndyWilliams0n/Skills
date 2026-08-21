@@ -14,100 +14,67 @@ migration plan that moves a feature from a reference workspace into the active
 workspace. Produce a plan only. Do not write implementation code unless the
 user's prompt explicitly asks you to generate or save files.
 
-## Gather evidence with assistgraph
+## Delegate evidence collection
 
-Prefer the installed `assistgraph` binary. If it is unavailable, replace it in
-the commands below with `npx -y assistgraph`. Use the CLI as the primary
-interface; do not read either entire `.assist/graph/graph.json` into context and
-do not install or configure the optional MCP adapter.
+Apply `planning-subagents` when it is available. Use it to delegate bounded,
+read-only graph and source investigation when the scope justifies a handoff.
+The primary model retains parity decisions, target architecture, tradeoffs,
+phase ordering, and the final plan. Continue directly if the companion skill or
+a suitable worker model is unavailable.
 
-Also read `AGENTS.md`, `RULES_FOR_AGENTS.md`, or `RULES.md` in the active
-workspace before planning. These are authoritative for target conventions.
+## Follow project rules
 
-### Active workspace
+Before gathering evidence or delegating work, search every project or workspace
+in scope for Markdown files whose filename contains `AGENTS` or `RULES`, using a
+case-insensitive match. This includes names such as `AGENTS.md`, `RULES.md`, and
+`RULES_FOR_AGENTS.md`. Exclude dependency, version-control, build, and generated
+directories unless one is part of the requested scope.
 
-From the active workspace root, run:
+Read every matching file that applies to the paths being investigated and
+follow its instructions. Treat a rule file as applying to its directory and
+descendants unless it defines a different scope. When project rule files
+conflict, prefer the closest applicable file unless a higher-priority
+instruction requires otherwise. Report a material unresolved conflict instead
+of inventing a rule.
 
-```bash
-assistgraph status
-```
+Do not create, modify, rename, or delete project rule files unless the user
+explicitly asks. Do not invent new project rules or propose a new `AGENTS.md`,
+`RULES.md`, or other matching Markdown file as part of an ordinary plan.
 
-- If no graph exists, run `assistgraph build --no-vault`, unless the user has
-  prohibited workspace changes. The build creates `.assist/graph/` and may
-  update `.gitignore`.
-- If `fresh` is true, use the graph as-is.
-- If only `structureFresh` is true, topology and declarations are usable, but
-  open source before relying on exact locations.
-- If `structurallyChanged`, `added`, or `removed` is non-empty, rebuild before
-  relying on the results.
-- Run `assistgraph stats` once. When inspecting the first representative file,
-  a current graph should expose `symbols`, `structureHash`, and import
-  `rawSpecifier`, `bindings`, and `location`. If those fields are absent,
-  rebuild the legacy 1.0 graph with the current CLI.
+## Gather structural evidence with assistgraph
 
-### Reference workspace
+If the `assist-graph` skill is available, apply it and read its `SKILL.md`
+before running an AssistGraph command. Treat it as the canonical source for CLI
+usage, graph freshness, workspace-write safety, bounded output, and structural
+verification.
 
-Run the read-only freshness check in a subshell so subsequent commands do not
-accidentally remain in the reference directory:
+If the skill is unavailable, use this fallback:
 
-```bash
-(cd <reference-workspace-path> && assistgraph status)
-```
+- Run the installed `assistgraph` binary from the relevant workspace root, or
+  use `npx -y assistgraph` when the binary is unavailable.
+- Run `assistgraph status` first. In the active workspace, build with
+  `assistgraph build --no-vault` when the graph is missing or structurally stale
+  and workspace writes are permitted, then check status again.
+- Use bounded CLI queries. Never read or print either workspace's
+  `.assist/graph/graph.json`, and do not install or configure the optional MCP
+  adapter.
+- Check `truncated` on every bounded result. Narrow the query or increase its
+  limit before describing the result as complete.
+- Use the graph for files, declarations, imports, dependencies, and dependents.
+  Inspect source, tests, configuration, routes, API contracts, and workflows for
+  behavior and feature parity.
 
-The reference workspace and its `.gitignore` are read-only. Do not run
-`assistgraph build` there unless the user explicitly authorizes generated files
-and a possible `.gitignore` update. If its graph is absent or structurally
-stale, use read-only source inspection instead and record that limitation. If
-only source locations may be stale, open the referenced source directly before
-citing a line. If `file` results omit the current symbol, structure-hash, or
-import-evidence fields, treat the reference graph as legacy and use source
-inspection unless the user authorizes rebuilding it.
+Treat the reference workspace as read-only. Check its graph status without
+building. If its graph is missing or structurally stale, use source inspection
+and record the limitation unless the user explicitly authorizes generated files
+and a possible `.gitignore` update.
 
-### Map the reference feature
-
-Run each command from the reference root using the subshell form:
-
-```bash
-(cd <reference-workspace-path> && assistgraph files <feature-term> --limit 200)
-(cd <reference-workspace-path> && assistgraph communities --limit 200)
-(cd <reference-workspace-path> && assistgraph communities <feature-community-id> --limit 1000)
-(cd <reference-workspace-path> && assistgraph symbols <entrypoint-or-public-api> --limit 200)
-(cd <reference-workspace-path> && assistgraph file <entrypoint-path> --limit 300)
-(cd <reference-workspace-path> && assistgraph deps <entrypoint-path> --depth 0 --limit 1000)
-(cd <reference-workspace-path> && assistgraph dependents <entrypoint-path> --depth 0 --limit 1000)
-```
-
-Use `files` and `communities` to establish membership, `symbols` to locate
-public declarations, `file` to capture signatures and exact import evidence,
-`deps` to find internal implementation dependencies, and `dependents` to find
-integration points outside the feature. Inspect package manifests and the
-entrypoint's unresolved/external imports separately to identify package
-dependencies.
-
-### Map the active target
-
-Use the same queries in the active workspace, but search for target-side
-equivalents rather than matching filenames blindly:
-
-```bash
-assistgraph files <target-domain-or-pattern> --limit 200
-assistgraph symbols <service-component-hook-or-type> --exported --limit 200
-assistgraph file <representative-target-file> --limit 300
-assistgraph deps <representative-target-entrypoint> --depth 0 --limit 1000
-assistgraph dependents <target-integration-point> --depth 0 --limit 1000
-assistgraph path <target-entrypoint> <shared-service> --limit 500
-```
-
-Every bounded result includes truncation metadata. If `truncated` is true,
-increase the limit up to 2000 or narrow the file, path, symbol, or community
-query. Never call a feature map or dependency comparison complete while it is
-truncated.
-
-Assistgraph identifies file structure, declarations, and imports; it does not
-resolve function calls, symbol usages, runtime behavior, data flow, routes, or
-inferred types. After using it to select the relevant files, inspect source,
-tests, configuration, route definitions, API contracts, and user workflows in
-both workspaces. Use text search for call sites and references.
+Map the reference feature with file, community, symbol, file-detail,
+dependency, and dependent queries. Map the active workspace with the same query
+types, but search for target-side equivalents and integration points rather
+than matching filenames blindly. Inspect manifests and external imports for
+package requirements, and use path queries when a structural connection needs
+proof.
 
 ## Planning Phases
 
@@ -291,8 +258,8 @@ Produce a markdown document with the following structure:
   currently working in)
 - Always prefer active workspace conventions over reference workspace
   conventions
-- Rule files (AGENTS.md, RULES_FOR_AGENTS.md, RULES.md) in the active workspace
-  are the highest authority for conventions and must be followed
+- Follow every applicable project rule file discovered in the active and
+  reference workspaces under the instruction hierarchy
 - Every reference feature must appear in the parity comparison table
 - Every deferred task must name the phase where it will be resolved
 - The penultimate phase must resolve ALL deferred tasks with none remaining

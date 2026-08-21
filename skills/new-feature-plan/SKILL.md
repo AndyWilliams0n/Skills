@@ -14,81 +14,60 @@ implementation plan for a new feature. Produce a plan only. Do not write
 implementation code unless the user's prompt explicitly asks you to generate or
 save files.
 
-## Gather evidence with assistgraph
+## Delegate evidence collection
 
-Run assistgraph from the workspace root. Prefer the installed `assistgraph`
-binary. If it is unavailable, replace it in the commands below with
-`npx -y assistgraph`. Use the CLI as the primary interface; do not read the
-whole `.assist/graph/graph.json` into context and do not install or configure
-the optional MCP adapter.
+Apply `planning-subagents` when it is available. Use it to delegate bounded,
+read-only graph and source investigation when the scope justifies a handoff.
+The primary model retains feature boundaries, architectural decisions,
+tradeoffs, phase ordering, and the final plan. Continue directly if the
+companion skill or a suitable worker model is unavailable.
 
-First inspect freshness:
+## Follow project rules
 
-```bash
-assistgraph status
-```
+Before gathering evidence or delegating work, search every project or workspace
+in scope for Markdown files whose filename contains `AGENTS` or `RULES`, using a
+case-insensitive match. This includes names such as `AGENTS.md`, `RULES.md`, and
+`RULES_FOR_AGENTS.md`. Exclude dependency, version-control, build, and generated
+directories unless one is part of the requested scope.
 
-- If no graph exists, run `assistgraph build --no-vault`, unless the user has
-  prohibited workspace changes. The build creates `.assist/graph/` and may
-  update `.gitignore`.
-- If `fresh` is true, use the graph as-is.
-- If `structureFresh` is true but `fresh` is false, dependency and declaration
-  structure is usable. Open source before relying on an exact location.
-- If `structurallyChanged`, `added`, or `removed` is non-empty, rebuild before
-  relying on dependency results.
-- Run `assistgraph stats` once. When inspecting the first representative file,
-  a current graph should expose `symbols`, `structureHash`, and import
-  `rawSpecifier`, `bindings`, and `location`. If those fields are absent,
-  rebuild the legacy 1.0 graph with the current CLI.
+Read every matching file that applies to the paths being investigated and
+follow its instructions. Treat a rule file as applying to its directory and
+descendants unless it defines a different scope. When project rule files
+conflict, prefer the closest applicable file unless a higher-priority
+instruction requires otherwise. Report a material unresolved conflict instead
+of inventing a rule.
 
-Use this sequence to learn how the codebase already implements similar work:
+Do not create, modify, rename, or delete project rule files unless the user
+explicitly asks. Do not invent new project rules or propose a new `AGENTS.md`,
+`RULES.md`, or other matching Markdown file as part of an ordinary plan.
 
-1. Find analogous features, folders, and entrypoints:
+## Gather structural evidence with assistgraph
 
-   ```bash
-   assistgraph files <feature-or-domain-term> --limit 100
-   assistgraph communities --limit 200
-   assistgraph communities <community-id> --limit 500
-   ```
+If the `assist-graph` skill is available, apply it and read its `SKILL.md`
+before running an AssistGraph command. Treat it as the canonical source for CLI
+usage, graph freshness, workspace-write safety, bounded output, and structural
+verification.
 
-2. Locate existing public APIs and declarations the new feature can reuse:
+If the skill is unavailable, use this fallback:
 
-   ```bash
-   assistgraph symbols <service-component-hook-or-type> --limit 100
-   assistgraph symbols <term> --path <likely-folder> --exported --limit 100
-   ```
+- Run the installed `assistgraph` binary from the workspace root, or use
+  `npx -y assistgraph` when the binary is unavailable.
+- Run `assistgraph status` first. When the graph is missing or structurally
+  stale, run `assistgraph build --no-vault` only when workspace writes are
+  permitted, then check status again.
+- Use bounded CLI queries. Never read or print `.assist/graph/graph.json`, and
+  do not install or configure the optional MCP adapter.
+- Check `truncated` on every bounded result. Narrow the query or increase its
+  limit before describing the result as complete.
+- Use the graph for files, declarations, imports, dependencies, and dependents.
+  Inspect source, tests, routes, configuration, and manifests for behavior.
 
-3. Inspect representative entrypoints and shared modules. `file` returns
-   declarations, signatures, direct imports, imported/local aliases, source
-   spans, and direct dependents:
-
-   ```bash
-   assistgraph file <representative-path> --limit 200
-   ```
-
-4. Map the complete internal dependency set of an analogous feature and the
-   consumers of any shared extension point:
-
-   ```bash
-   assistgraph deps <feature-entrypoint> --depth 0 --limit 500
-   assistgraph dependents <shared-extension-point> --depth 0 --limit 500
-   assistgraph path <feature-entrypoint> <shared-service> --limit 500
-   ```
-
-5. Use `assistgraph cycles --limit 200` before proposing new cross-community
-   imports. Run `assistgraph audit` only when the request includes a broader
-   architecture or codebase-health assessment and generated analysis output is
-   permitted; it writes `.assist/graph/audit.md`.
-
-Every bounded result includes truncation metadata. If `truncated` is true,
-increase the limit up to 2000 or narrow the file, path, symbol, or community
-query. Never infer conventions or complete scope from a truncated result.
-
-The graph tells you where patterns and boundaries are, not how they behave.
-Open the representative source files selected above to verify APIs, runtime
-flow, state management, styling, error handling, configuration, and tests. Use
-text search for call sites and symbol usages because assistgraph indexes
-declarations but does not resolve references or function calls.
+Map repository communities and analogous features, locate relevant public
+declarations and extension points, and inspect representative file metadata.
+Trace the dependency direction between the proposed feature, shared services,
+and existing consumers. Check relevant cycles before proposing cross-community
+imports. Run the write-producing audit only when the request requires a broader
+structural review and generated analysis output is permitted.
 
 ## Planning Phases
 
