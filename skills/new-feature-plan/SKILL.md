@@ -16,11 +16,22 @@ save files.
 
 ## Delegate evidence collection
 
-Apply `planning-subagents` when it is available. Use it to delegate bounded,
-read-only graph and source investigation when the scope justifies a handoff.
-The primary model retains feature boundaries, architectural decisions,
-tradeoffs, phase ordering, and the final plan. Continue directly if the
-companion skill or a suitable worker model is unavailable.
+The primary model remains the planning agent. Delegate bounded, read-only graph
+and source investigation when the task has independent workstreams or enough
+evidence to crowd the primary context. Work directly when the scope is small,
+tightly sequential, or a suitable worker is unavailable.
+
+Use Luna workers with a GPT Sol or Astra primary. Use Haiku workers with a
+Claude Opus or Fable primary. Keep the user-selected primary model and reasoning
+mode unchanged.
+
+Give each worker a concrete scope. It may run read-only graph status and bounded
+queries, inspect selected source and tests, and return a compact evidence
+report. It must follow applicable project rules and use the `assist-graph` skill
+when available, otherwise the fallback below. Workers must not build or audit
+the graph, modify project rule files, choose final feature boundaries or
+architecture, or write the plan. The primary confirms critical evidence and
+owns tradeoffs, phase ordering, and the final plan.
 
 ## Follow project rules
 

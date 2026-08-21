@@ -12,8 +12,6 @@ platform-specific copies or installer scripts.
   tracking.
 - **new-feature-plan** - Plan features using existing structure, conventions,
   and integration points.
-- **planning-subagents** - Delegate bounded planning evidence collection to
-  smaller workers while the primary model owns judgment and synthesis.
 - **refactor-plan** - Plan refactors with dependency, cycle, boundary, and
   maintainability analysis.
 
@@ -28,8 +26,6 @@ skills/
 ├── migration-plan/
 │   └── SKILL.md
 ├── new-feature-plan/
-│   └── SKILL.md
-├── planning-subagents/
 │   └── SKILL.md
 └── refactor-plan/
     └── SKILL.md
